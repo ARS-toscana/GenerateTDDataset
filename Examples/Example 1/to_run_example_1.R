@@ -8,16 +8,23 @@ source(file.path("..","..","R", "GenerateTDDataset.R"))
 
 dir.create(file.path(thisdir,"g_output"), recursive = T)
 
+if (!require("data.table")) install.packages("data.table")
+library(data.table)
 
 cohort <- data.table::fread(file.path(thisdir,"i_input","cohort.csv"))
 vardataset <- data.table::fread(file.path(thisdir,"i_input","variable.csv"))
 
+# to test what happens with NA values, set a value of -var- to NA
+
+vardataset <- vardataset[var == "",var := NA_character_]
 
 outputTD <- GenerateTDDataset(dt = list(cohort,vardataset),
-                              id = c("id","id"),
-                              start_d = c("study_entry","st_d"),
-                              end_d = c("study_exit","end_d"),
-                              variables = list(list("in_study"),list("var"))
+                              id_vars = c("person_id","person_id"),
+                              start_d_vars = c("study_entry","st_d"),
+                              end_d_vars = c("study_exit","end_d"),
+                              variables = list(list("in_study"),list("var")) #,
+                              # replace_missing_periods_with_default = c(T,F),
+                              # default_values = list(list(0),list())
                               )
 
 # fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
