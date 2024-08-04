@@ -1,5 +1,3 @@
-# Very simple example: the first dataset is a cohort with 1 period per subject, the second a dataset with one variable with some changes over time and incomplete periods
-
 rm(list=ls(all.names=TRUE))
 
 if (!require("rstudioapi")) install.packages("rstudioapi")

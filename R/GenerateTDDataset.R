@@ -13,7 +13,7 @@
 #' @param replace_missing_periods_with_default: pair of logicals (default: F): specifies whether periods unobserved must be considered observed with default values in the variables (to be stored in the list of lists default_values). if this is F, periods unobserved are observed with NA values in the variables
 #' @param default_values pair of lists of values: default value for the variables
 #' 
-# supports formats integer, numeric, character, factor, Date, POSIXct, IDate, and logical
+# supports formats integer, numeric, character, factor, Date, IDate, and logical
  
 GenerateTDDataset <- function(dt,
                               id_vars, 
@@ -191,6 +191,8 @@ GenerateTDDataset <- function(dt,
       }
     }
   }
+  
+  
 
   # Replace missing values with placeholder_value
   for (i in 1:2) {
@@ -202,8 +204,8 @@ GenerateTDDataset <- function(dt,
   }
   
   # Add logical variable 'observed_1' and 'observed_2'
-  dt[[1]][, observed_1 := TRUE]
-  dt[[2]][, observed_2 := TRUE]
+  dt[[1]][, observed_1 := 1]
+  dt[[2]][, observed_2 := 1]
   
   
   # fill the gaps between intervals of the same id
@@ -213,41 +215,84 @@ GenerateTDDataset <- function(dt,
     
     # Define end_prev and identify gaps
     dt[[i]][, end_prev := shift(get(end_d_vars[i]), type = "lag"), by = c(id_vars[i])]
-    to_add <- dt[[i]][!is.na(end_prev) & end_prev < get(start_d_vars[i]) - 1, 
+    to_add <- copy(dt[[i]])[!is.na(end_prev) & end_prev < get(start_d_vars[i]) - 1, 
                       .(get(id_vars[i]), end_prev)]
-    setnames(to_add, "V1", id_vars[i])
-    to_add[, (start_d_vars[i]) := end_prev + 1]
-    # to_add[, (end_d_vars[i]) := get(start_d_vars[i]) - 1]
-    # mark that the new records are unobserved
-    to_add <- to_add[,(paste0("observed_",i)) := FALSE]
-    
-    # Append the new rows to the original dataset
-    dt[[i]] <- rbind(dt[[i]], to_add, fill = TRUE)
+   if (nrow(to_add) > 1){
+      setnames(to_add, "V1", id_vars[i])
+      to_add[, (start_d_vars[i]) := end_prev + 1]
+      # to_add[, (end_d_vars[i]) := get(start_d_vars[i]) - 1]
+      # mark that the new records are unobserved
+      to_add <- to_add[,(paste0("observed_",i)) := 0]
+      # Append the new rows to the original dataset
+      dt[[i]] <- rbind(dt[[i]], to_add, fill = TRUE)
+   }
+    rm(to_add)
     #remove auxiliary variable
     dt[[i]][, end_prev := NULL]
     # add end the overall observation as a separate variable
-    dt[[i]][,(paste0("last_observed_",i)) := max(get(end_d_vars[i])),  by = c(id_vars[i]) ]
+    dt[[i]][,(paste0("last_day_observed_",i)) := max(get(end_d_vars[i])),  by = c(id_vars[i]) ]
+    # add a row that contains the next day to the last
+    to_add <- unique(copy(dt[[i]])[,.(get(id_vars[i]), get(paste0("last_day_observed_",i)))])
+    setnames(to_add,c("V1","V2"),c(id_vars[i],end_d_vars[i]))
+    to_add[, (start_d_vars[i]) := get(end_d_vars[i]) + 1]
+    to_add <- to_add[,(paste0("observed_",i)) := 0]
+    View(to_add)
+    # Append the new rows to the original dataset
+    dt[[i]] <- rbind(dt[[i]], to_add, fill = TRUE)
+    rm(to_add)
     #remove end of each period
     dt[[i]][, (end_d_vars[i]) := NULL]
   }
   
-  # uniform the id identifier start_d_vars[1]  
+  # uniform the id identifier start_d_vars[1]
+  id_vars_final <- id_vars[1]
   if (id_vars[2] != id_vars[1]){
-    setnames(dt[[2]], get(id_vars[2]), id_vars[1])
+    setnames(dt[[2]], get(id_vars[2]), id_vars_final)
   }
   
-  # create a copy of start_d_vars[1]  
+  # create a copy of start_d_vars[1]
+  start_d_vars_final <- start_d_vars[1]
   if (start_d_vars[2] != start_d_vars[1]){
-    dt[[1]][, (start_d_vars[2]) := get(start_d_vars[1])]
+    dt[[2]][, (start_d_vars_final) := get(start_d_vars[2])]
   }
   
   # rbind the two datasets and sort 
   dt <- rbind(dt[[1]],dt[[2]], fill = T)
-  setkeyv(dt, c(id_vars[1], start_d_vars[2]))
+  setkeyv(dt, c(id_vars_final, start_d_vars_final))
 
-  # TO DO: collapse values observed on the same day across the two datasets
+  # collapse values of all the variables of dt observed on the same day: collapse all variables to their max by id_vars_final and start_d_vars_final, ignoring missing values
   
-  # ...
+  # View(dt)
+  # clas <- sapply(dt, class)
+  # print(clas)
+  # print(paste(id_vars_final, start_d_vars_final))
+  cols_to_collapse <- setdiff(names(dt), c(id_vars_final,start_d_vars_final))
+  
+  #  <- dt[, lapply(.SD, function(x) max(x, na.rm = TRUE)), by = c(id_vars_final, start_d_vars_final), .SDcols = cols_to_collapse]
+  
+  collapsed_dt <- dt[, lapply(.SD, function(x) {
+    # Check if all values are NA
+    if (all(is.na(x))) {
+      # Return NA of the appropriate type based on the class of x
+      na_value <- switch(class(x)[1],
+                         "integer" = NA_integer_,
+                         "numeric" = NA_real_,
+                         "character" = NA_character_,
+                         "factor" = NA_character_,  # For factors, NA_character_ is returned since NA_factor_ does not exist
+                         "logical" = NA)
+      return(na_value)
+    } else {
+      # Calculate max, ignoring NA values
+      return(max(x, na.rm = TRUE))
+    }
+  }), by = c(id_vars_final,start_d_vars_final), .SDcols = cols_to_collapse]
+  
+  # # Replace -Inf (result of max when all are NA) with NA
+  # collapsed_dt[is.infinite(collapsed_dt)] <- NA
+  
+  # Replace original dt with collapsed_dt
+  dt <- collapsed_dt
+  
   
   # TO DO: if requested, replace unobserved values with the default value
   

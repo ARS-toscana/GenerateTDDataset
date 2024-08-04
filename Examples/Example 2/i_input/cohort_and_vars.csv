@@ -1,0 +1,7 @@
+person_id,study_entry,study_exit,st_d,end_d,in_study,city
+P01,1,500,1,200,1,Rome
+P01,1,500,201,300,1,Nairobi
+P01,1,500,301,500,1,Vancouver
+P02,1,500,1,150,1,Sidney
+P02,1,500,151,500,1,Rio de Janeiro
+P03,1,500,1,500,1,Shanghai

@@ -1,4 +1,4 @@
-# Very simple example: the first dataset is a cohort with 1 period per subject, the second a dataset with one variable with some changes over time and incomplete periods
+# Slightly more complex: the cohort has already an additional variable, the other dataset has two variables
 
 rm(list=ls(all.names=TRUE))
 
@@ -13,18 +13,15 @@ dir.create(file.path(thisdir,"g_output"), recursive = T)
 if (!require("data.table")) install.packages("data.table")
 library(data.table)
 
-cohort <- data.table::fread(file.path(thisdir,"i_input","cohort.csv"))
-vardataset <- data.table::fread(file.path(thisdir,"i_input","variable.csv"))
+cohort_and_vars <- data.table::fread(file.path(thisdir,"i_input","cohort_and_vars.csv"))
+other_vars <- data.table::fread(file.path(thisdir,"i_input","other_vars.csv"))
 
-# to test what happens with NA values, set a value of -var- to NA
 
-vardataset <- vardataset[var == "",var := NA_character_]
-
-outputTD <- GenerateTDDataset(dt = list(cohort,vardataset),
+outputTD <- GenerateTDDataset(dt = list(cohort_and_vars,other_vars),
                               id_vars = c("person_id","person_id"),
-                              start_d_vars = c("study_entry","st_d"),
-                              end_d_vars = c("study_exit","end_d"),
-                              variables = list(list("in_study"),list("var")) #,
+                              start_d_vars = c("st_d","st_d"),
+                              end_d_vars = c("end_d","end_d"),
+                              variables = list(list("in_study","city"),list("diabetes","most_recent_vaccine")) #,
                               # replace_missing_periods_with_default = c(T,F),
                               # default_values = list(list(0),list())
                               )
