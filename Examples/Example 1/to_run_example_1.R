@@ -24,9 +24,7 @@ outputTD <- GenerateTDDataset(dt = list(cohort,vardataset),
                               id_vars = c("person_id","person_id"),
                               start_d_vars = c("study_entry","st_d"),
                               end_d_vars = c("study_exit","end_d"),
-                              variables = list(list("in_study"),list("var")) #,
-                              # replace_missing_periods_with_default = c(T,F),
-                              # default_values = list(list(0),list())
+                              TDvariables = list(list("in_study"),list("var")) #,
                               )
 
 # fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))

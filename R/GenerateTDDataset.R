@@ -8,10 +8,10 @@
 #' @param id_vars pair of variable names: variable in either dataset where the identifier of the unit of observation is stored
 #' @param start_d_vars pair of variable names: variable in either dataset where the start of validity of the record is stored
 #' @param end_vars pair of variable names: variable in either dataset where the end of validity of the record is stored
-#' @param variables pair of lists of variable names: groups of time-dependent variables in either dataset
-#' @param retain_periods_unobserved: pair of logicals (default: T): specified whether periods unobserved for either dataset must be retained 
-#' @param replace_missing_periods_with_default: pair of logicals (default: F): specifies whether periods unobserved must be considered observed with default values in the variables (to be stored in the list of lists default_values). if this is F, periods unobserved are observed with NA values in the variables
-#' @param default_values pair of lists of values: default value for the variables
+#' @param TDvariables pair of lists of variable names: groups of time-dependent variables in either dataset
+#' @param default_value_for_missing lists of list of values: default value for those TDvariables that have a default value; if this argument is not assigned for a variable, for that variable unobserved periods remain assigned at missing (default)
+#' @param baseline_value lists of list of values: baseline value for those TDvariables that have a baseline value; if this argument is not assigned for a variable, for that variable the baseline periods, if unobserved, remain assigned at missing (default)
+#' @param TD_variables_with_definite_value list of variables that extend the last observed value indefinitely to the future, even if to periods when they are not observed in the original dataset. if a variable is listed here, then default_value_for_missing cannot be assigned for that variable
 #' 
 # supports formats integer, numeric, character, factor, Date, IDate, and logical
  
@@ -19,15 +19,19 @@ GenerateTDDataset <- function(dt,
                               id_vars, 
                               start_d_vars,
                               end_d_vars,
-                              variables,
-                              retain_periods_unobserved  = c(T,T),
-                              replace_missing_periods_with_default = c(F,F),
-                              default_values = list(list(),list())
-                                   ) {
+                              TDvariables,
+                              default_value_for_missing = list(),
+                              baseline_value = list(),
+                              TD_variables_with_definite_value = c()
+                              ) {
   
   # libraries
   if (!require("data.table")) install.packages("data.table")
   library(data.table)
+  if (!require("zoo")) install.packages("zoo")
+  library(zoo)
+  # store the unique list of TD_variables, that will be stored in the final dataset
+  TD_variables_final <- unique(c(unlist(TDvariables[1]), unlist(TDvariables[2])))
   
   # Input validation
   if (!is.list(dt) || length(dt) != 2) {
@@ -45,12 +49,13 @@ GenerateTDDataset <- function(dt,
   if (!is.character(end_d_vars) || length(end_d_vars) != 2) {
     stop("Argument 'end_d_vars' should be a character vector of length 2.")
   }
-  if (!is.list(variables) || length(variables) != 2 || 
-      !all(sapply(variables, function(x) is.list(x) && all(sapply(x, is.character))))) {
-    stop("Argument 'variables' should be a list of two lists, each containing character vectors.")
+  if (!is.list(TDvariables) || length(TDvariables) != 2 || 
+      !all(sapply(TDvariables, function(x) is.list(x) && all(sapply(x, is.character))))) {
+    stop("Argument 'TDvariables' should be a list of two lists, each containing character vectors.")
   }
-  if (!is.list(default_values) || length(default_values) != 2) {
-    stop("Argument 'default_values' should be a list of two lists, even if empty.")
+
+  if ( length(TD_variables_final) < length(unique(unlist(TDvariables[1]))) +  length(unique(unlist(TDvariables[2]))) )  {
+    stop("The TD variables of the two datasets cannot have the same name")
   }
   
   # Supported types
@@ -59,17 +64,18 @@ GenerateTDDataset <- function(dt,
   
   # Initialize list to store classes
   classesvars <- list(list(), list())
+  classesvarsunique <- list()
   
-  # Check that all variables in the first list of 'variables' exist in the first dataset of 'dt'
+  # Check that all variables in the first list of 'TDvariables' exist in the first dataset of 'dt'
   first_dt_vars <- names(dt[[1]])
-  missing_vars_1 <- setdiff(unlist(variables[[1]]), first_dt_vars)
+  missing_vars_1 <- setdiff(unlist(TDvariables[[1]]), first_dt_vars)
   if (length(missing_vars_1) > 0) {
     stop("The following variables are not found in the first dataset: ", paste(missing_vars_1, collapse = ", "))
   }
   
-  # Check that all variables in the second list of 'variables' exist in the second dataset of 'dt'
+  # Check that all variables in the second list of 'TDvariables' exist in the second dataset of 'dt'
   second_dt_vars <- names(dt[[2]])
-  missing_vars_2 <- setdiff(unlist(variables[[2]]), second_dt_vars)
+  missing_vars_2 <- setdiff(unlist(TDvariables[[2]]), second_dt_vars)
   if (length(missing_vars_2) > 0) {
     stop("The following variables are not found in the second dataset: ", paste(missing_vars_2, collapse = ", "))
   }
@@ -88,18 +94,26 @@ GenerateTDDataset <- function(dt,
     }
   }
   
-  # Store and validate classes of variables in the first dataset
-  for (var in unlist(variables[[1]])) {
+   # TO DO: check that the following lists contain correct values and are not in contradiction with each other
+  # default_value_for_missing
+  # baseline_value
+  # TD_variables_with_definite_value
+  
+  
+  
+  # Store and validate classes of TDvariables in the first dataset
+  for (var in unlist(TDvariables[[1]])) {
     var_class <- class(dt[[1]][[var]])
     classesvars[[1]][[var]] <- var_class
+    classesvarsunique[[var]] <- var_class
     if (!var_class %in% supported_types) {
       stop(sprintf("The variable '%s' in the first dataset has an unsupported type: %s. Please recast the variable to one of the supported types: %s.",
                    var, var_class, paste(supported_types, collapse = ", ")))
     }
   }
   
-  # Store and validate classes of variables in the second dataset
-  for (var in unlist(variables[[2]])) {
+  # Store and validate classes of TDvariables in the second dataset
+  for (var in unlist(TDvariables[[2]])) {
     var_class <- class(dt[[2]][[var]])
     classesvars[[2]][[var]] <- var_class
     if (!var_class %in% supported_types) {
@@ -107,30 +121,29 @@ GenerateTDDataset <- function(dt,
                    var, var_class, paste(supported_types, collapse = ", ")))
     }
   }
+  # 
+  # # Check 'replace_missing_periods_with_default' is a list of logicals
+  # 
+  # if (!is.logical(replace_missing_periods_with_default) || length(replace_missing_periods_with_default) != 2) {
+  #   stop("Argument 'replace_missing_periods_with_default' should be a list of logicals")
+  # }
+  # 
+  # # Check 'default_values'
+  # for (i in 1:2) {
+  #   if (replace_missing_periods_with_default[i]) {
+  #     if (length(default_values[[i]]) != length(TDvariables[[i]])) {
+  #       stop(sprintf("Length of 'default_values' for the %s dataset must match the length of 'TDvariables' list.", ifelse(i == 1, "first", "second")))
+  #     }
+  #     for (j in seq_along(default_values[[i]])) {
+  #       if (class(default_values[[i]][[j]]) != classesvars[[i]][[TDvariables[[i]][j]]]) {
+  #         stop(sprintf("Default value for variable '%s' in the %s dataset must be of class '%s'.",
+  #                      TDvariables[[i]][j], ifelse(i == 1, "first", "second"), classesvars[[i]][[TDvariables[[i]][j]]]))
+  #       }
+  #     }
+  #   }
+  # }
   
-  # Check 'retain_periods_unobserved' and 'replace_missing_periods_with_default' are logicals of length 2
-  if (!is.logical(retain_periods_unobserved) || length(retain_periods_unobserved) != 2) {
-    stop("Argument 'retain_periods_unobserved' should be a logical vector of length 2.")
-  }
-  if (!is.logical(replace_missing_periods_with_default) || length(replace_missing_periods_with_default) != 2) {
-    stop("Argument 'replace_missing_periods_with_default' should be a logical vector of length 2.")
-  }
-  
-  # Check 'default_values'
-  for (i in 1:2) {
-    if (replace_missing_periods_with_default[i]) {
-      if (length(default_values[[i]]) != length(variables[[i]])) {
-        stop(sprintf("Length of 'default_values' for the %s dataset must match the length of 'variables' list.", ifelse(i == 1, "first", "second")))
-      }
-      for (j in seq_along(default_values[[i]])) {
-        if (class(default_values[[i]][[j]]) != classesvars[[i]][[variables[[i]][j]]]) {
-          stop(sprintf("Default value for variable '%s' in the %s dataset must be of class '%s'.",
-                       variables[[i]][j], ifelse(i == 1, "first", "second"), classesvars[[i]][[variables[[i]][j]]]))
-        }
-      }
-    }
-  }
-  
+
   # # TO BE COMPLETED: Check for overlapping periods in either dataset using foverlaps
   # for (i in 1:2) {
   #   # Set keys using the dynamic column names
@@ -148,14 +161,25 @@ GenerateTDDataset <- function(dt,
   #   # Filter out self-overlaps (where the observation overlaps with itself)
   #   TO DO!!!!
   # }
-    
-  ################################################
-  # Function body
-  #
-
-  # Cast logical variables to integers and Dates to IDate
+  
+  # # TO COMPLETE: if in dt[[i]] there are additional variables with respect to those in the function call, check that they are time-independent (TI), that is, that they have the same value across all records with same id_vars[[i]]
+  
+  TIvariables <- list()
   for (i in 1:2) {
-    for (var in unlist(variables[[i]])) {
+    TIvariables[[i]] <- setdiff(names(dt[[i]]),c(unlist(TDvariables[[i]]),id_vars[[i]],start_d_vars[[i]],end_d_vars[[i]]) )
+    }
+  
+  # ...
+    
+
+  
+  ################################################
+  # FUNCTION BODY
+  ############################################
+
+  # Cast logical TDvariables to integers and Dates to IDate
+  for (i in 1:2) {
+    for (var in unlist(TDvariables[[i]])) {
       var_class <- class(dt[[i]][[var]])
       if (var_class == "logical") {
         dt[[i]][[var]] <- as.integer(dt[[i]][[var]])
@@ -166,28 +190,31 @@ GenerateTDDataset <- function(dt,
   }
 
   # Initialize lists for extreme_value and placeholder_value
-  extreme_value <- list(list(), list())
-  placeholder_value <- list(list(), list())
+  extreme_value <- list()
+  placeholder_value <- list()
+  placeholder_value2 <- list()
 
   # Calculate extreme_value and placeholder_value for each variable
   for (i in 1:2) {
-    for (thisvar in unlist(variables[[i]])) {
-      # Find the minimum value of non-missing values, except for charcters where we pick the maximum
+    for (thisvar in unlist(TDvariables[[i]])) {
+      # Find the minimum value of non-missing values, except for characters where we pick the maximum
       non_missing_vals <- dt[[i]][!is.na(get(thisvar)), get(thisvar)]
       if (length(non_missing_vals) > 0) {
         var_class <- class(dt[[i]][[thisvar]])
         if (var_class != "character"){
           min_val <- min(non_missing_vals, na.rm = TRUE)
-          extreme_value[[i]][[thisvar]] <- min_val
-          placeholder_value[[i]][[thisvar]] <- min_val - 1
+          extreme_value[[thisvar]] <- min_val
+          placeholder_value[[thisvar]] <- min_val - 1
+          placeholder_value2[[thisvar]] <- min_val - 2
         }else{
           max_val <- max(non_missing_vals, na.rm = TRUE)
-          extreme_value[[i]][[thisvar]] <- max_val
-          placeholder_value[[i]][[thisvar]] <- paste0(max_val,"Z")
-          }
+          extreme_value[[thisvar]] <- max_val
+          placeholder_value[[thisvar]] <- paste0(max_val,"Z")
+          placeholder_value2[[thisvar]] <- paste0(max_val,"ZZ")
+        }
       } else {
-        extreme_value[[i]][[thisvar]] <- NA
-        placeholder_value[[i]][[thisvar]] <- NA
+        extreme_value[[thisvar]] <- NA
+        placeholder_value[[thisvar]] <- NA
       }
     }
   }
@@ -196,9 +223,9 @@ GenerateTDDataset <- function(dt,
 
   # Replace missing values with placeholder_value
   for (i in 1:2) {
-    for (thisvar in unlist(variables[[i]])) {
-      if (!is.na(placeholder_value[[i]][[thisvar]])) {
-        dt[[i]][is.na(get(thisvar)), (thisvar) := placeholder_value[[i]][[thisvar]]]
+    for (thisvar in unlist(TDvariables[[i]])) {
+      if (!is.na(placeholder_value[[thisvar]])) {
+        dt[[i]][is.na(get(thisvar)), (thisvar) := placeholder_value[[thisvar]]]
       }
     }
   }
@@ -236,12 +263,17 @@ GenerateTDDataset <- function(dt,
     setnames(to_add,c("V1","V2"),c(id_vars[i],end_d_vars[i]))
     to_add[, (start_d_vars[i]) := get(end_d_vars[i]) + 1]
     to_add <- to_add[,(paste0("observed_",i)) := 0]
-    View(to_add)
     # Append the new rows to the original dataset
     dt[[i]] <- rbind(dt[[i]], to_add, fill = TRUE)
     rm(to_add)
     #remove end of each period
     dt[[i]][, (end_d_vars[i]) := NULL]
+    # mark each observation in unobserved record with placeholder value 2
+    for (thisvar in unlist(TDvariables[[i]])) {
+      if (!is.na(placeholder_value2[[thisvar]])) {
+        dt[[i]][is.na(get(thisvar)) & get(paste0("observed_",i)) == 0, (thisvar) := placeholder_value2[[thisvar]]]
+      }
+    }
   }
   
   # uniform the id identifier start_d_vars[1]
@@ -255,22 +287,20 @@ GenerateTDDataset <- function(dt,
   if (start_d_vars[2] != start_d_vars[1]){
     dt[[2]][, (start_d_vars_final) := get(start_d_vars[2])]
   }
+  # set the name of end_d_vars_final as end_d_vars[1]
+  end_d_vars_final <- end_d_vars[1]
   
+  #########################
   # rbind the two datasets and sort 
-  dt <- rbind(dt[[1]],dt[[2]], fill = T)
-  setkeyv(dt, c(id_vars_final, start_d_vars_final))
-
+  dt_final <- rbind(dt[[1]],dt[[2]], fill = T)
+  setkeyv(dt_final, c(id_vars_final, start_d_vars_final))
+  
+  ##############
   # collapse values of all the variables of dt observed on the same day: collapse all variables to their max by id_vars_final and start_d_vars_final, ignoring missing values
+
+  cols_to_collapse <- setdiff(names(dt_final), c(id_vars_final,start_d_vars_final))
   
-  # View(dt)
-  # clas <- sapply(dt, class)
-  # print(clas)
-  # print(paste(id_vars_final, start_d_vars_final))
-  cols_to_collapse <- setdiff(names(dt), c(id_vars_final,start_d_vars_final))
-  
-  #  <- dt[, lapply(.SD, function(x) max(x, na.rm = TRUE)), by = c(id_vars_final, start_d_vars_final), .SDcols = cols_to_collapse]
-  
-  collapsed_dt <- dt[, lapply(.SD, function(x) {
+  collapsed_dt <- dt_final[, lapply(.SD, function(x) {
     # Check if all values are NA
     if (all(is.na(x))) {
       # Return NA of the appropriate type based on the class of x
@@ -291,33 +321,58 @@ GenerateTDDataset <- function(dt,
   # collapsed_dt[is.infinite(collapsed_dt)] <- NA
   
   # Replace original dt with collapsed_dt
-  dt <- collapsed_dt
+  dt_final <- collapsed_dt
+  rm(collapsed_dt)
   
+  ###########
+  # generate end of observation time (end_d_vars_final): this is NA for the last record of id_vars_final, and for the previous it is start_d_vars_final of the next record, - 1. then, order the names of the variables and put id_vars_final,start_d_vars_final,end_d_vars_final first
   
-  # TO DO: if requested, replace unobserved values with the default value
+  dt_final[, (end_d_vars_final) := shift(get(start_d_vars_final), type = "lead"), by = c(id_vars[i])]
+  
+  dt_final[, (end_d_vars_final) := get(end_d_vars_final) - 1]
+  
+    ordervar <- c(id_vars_final,start_d_vars_final,end_d_vars_final, setdiff(names(dt_final), c(id_vars_final,start_d_vars_final,end_d_vars_final)))
+  
+  dt_final <- dt_final[, ..ordervar]
+  
+  # for TD_variables_final, replace NA values in the future with the last non-NA value
+  for (thisvar in TD_variables_final) {
+    if (thisvar %in% TD_variables_with_definite_value){
+      dt_final[get(thisvar) == placeholder_value2[[thisvar]], (thisvar) := NA]
+    }
+    dt_final[, (thisvar) := zoo::na.locf(get(thisvar), na.rm = FALSE), by = id_vars_final]
+  }
+  
+  # TO DO: reproduce values of TIvariables
   
   # ...
   
-  # TO DO: reproduce values in the future until there is a new value
   
-  # ...
+  ###########
+  # optional replacements of missing values
   
-  # TO DO: generate end of observation time
+  # TO DO: enact the various options to fill variables during their unobserved periods (in the case of numeric variables these are values "get(thisvar) < placeholder[[thisvar]]", in the other cases these are "get(thisvar) == placeholder2[[thisvar]]")
+  # default_value_for_missing
+  # baseline_value
+  # TD_variables_with_definite_value
   
-  # ...
-  
-  # TO DO: if requested, remove unobserved times
+      
+  # TO DO: unless an option is created that allows not to do so, remove unobserved times
   
   # ...
 
-  # TO DO: restore missing values marked by the placeholder
+  # TO DO: restore missing values marked by the placeholder (in the case of numeric variables these are values "get(thisvar) < extremevalue[[thisvar]]", in the other cases these are "get(thisvar) == placeholder[[thisvar]]")
   
   # ...
     
-  # TO DO: recast logical variables from integers, and Dates from IDate
+  # TO DO: recast logical TDvariables from integers, and Dates from IDate
+  
+  # ...
+
+  # TO DO: remove auxiliary variables
   
   # ...
   
-  # for testing purposes: return dt
-  return( dt)
+  # for testing purposes: return dt_final
+  return( dt_final)
 }
