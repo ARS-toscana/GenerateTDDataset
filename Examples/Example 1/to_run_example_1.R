@@ -20,11 +20,12 @@ vardataset <- data.table::fread(file.path(thisdir,"i_input","variable.csv"))
 
 vardataset <- vardataset[var == "",var := NA_character_]
 
-outputTD <- GenerateTDDataset(dt = list(cohort,vardataset),
-                              id_vars = c("person_id","person_id"),
+outputTD <- GenerateTDDataset(datasets = list(cohort,vardataset),
+                              UoO_vars = c("person_id","person_id"),
                               start_d_vars = c("study_entry","st_d"),
                               end_d_vars = c("study_exit","end_d"),
-                              TDvariables = list(list("in_study"),list("var")) #,
+                              TD_variables = list(list("in_study"),list("var")) ,
+                              keep_auxiliary_variables = T #,
                               )
 
 # fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))

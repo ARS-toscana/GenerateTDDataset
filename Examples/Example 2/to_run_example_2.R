@@ -17,11 +17,14 @@ cohort_and_vars <- data.table::fread(file.path(thisdir,"i_input","cohort_and_var
 other_vars <- data.table::fread(file.path(thisdir,"i_input","other_vars.csv"))
 
 
-outputTD <- GenerateTDDataset(dt = list(cohort_and_vars,other_vars),
-                              id_vars = c("person_id","person_id"),
+outputTD <- GenerateTDDataset(datasets = list(cohort_and_vars,other_vars),
+                              UoO_vars = c("person_id","person_id"),
                               start_d_vars = c("st_d","st_d"),
                               end_d_vars = c("end_d","end_d"),
-                              TDvariables = list(list("in_study","city"),list("diabetes","most_recent_vaccine")) #,
+                              TD_variables = list(list("in_study","city"),list("diabetes","most_recent_vaccine")),
+                              keep_auxiliary_variables = T,
+                              keep_observed_by = "none"
+                              #,
                               )
 
 # fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
