@@ -1,0 +1,8 @@
+person_id,study_entry,study_exit,in_study,var,observed_1,st_d,observed_2,first_day_observed_1,last_day_observed_1,first_day_observed_2,last_day_observed_2
+P01,1,500,1,,1,,0,1,500,,
+P02,1,9,1,,1,,0,1,500,10,300
+P02,10,300,1,A,1,10,1,1,500,10,300
+P02,301,500,1,,1,301,0,1,500,10,300
+P03,1,199,1,,1,,0,1,500,200,500
+P03,200,399,1,B,1,200,1,1,500,200,500
+P03,400,500,1,,1,400,1,1,500,200,500

@@ -1,4 +1,9 @@
-#'GenerateTDDataset
+#' GenerateTDDataset
+#'
+#' Version 0.9 
+#' 9 Aug 2024
+#'
+#' Implemented and tested Examples 1, 2, 3 and basic functionalities
 #'
 #' Version 0.1 
 #' 2 Aug 2024
@@ -10,9 +15,11 @@
 #' @param end_vars pair of variable names: variable in either dataset where the end of validity of the record is stored
 #' @param TD_variables pair of lists of variable names: groups of time-dependent variables in either dataset
 #' @param default_value_for_unobserved lists of list of values: default value for those TD_variables that have a default value; if this argument is not assigned for a variable (default), for that variable unobserved periods either remain assigned at missing, or are governed by baseline_value and/or TD_variables_with_definite_value, if specified. note that missing values in observed periods are considered observed values and are never replaced
-#' @param baseline_value lists of list of values: baseline value for those TD_variables that have a baseline value; if this argument is not assigned for a variable (default), for that variable the baseline periods, if unobserved, remain assigned at missing, unless default_value_for_unobserved is specified. if both default_value_for_unobserved and baseline_value are specified, then unobserved periods before the first observation are set set to baseline_value, and those after are set to default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
-#' @param TD_variables_with_definite_value list of variables that extend the last observed value to the future, until either there is a new observed period, or the study ends. if a variable is listed here, then it cannot have a value in default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
-#' 
+#' @param baseline_value lists of list of values: baseline value for those TD_variables that have a baseline value; if this argument is not assigned for a variable (default), for that variable the baseline periods, if unobserved, remain assigned at missing, unless default_value_for_unobserved is specified. if both default_value_for_unobserved and baseline_value are specified, then unobserved periods before the first observation are set to baseline_value, and those after are set to default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
+#' @param TD_variables_with_definite_value list of variables that extend the last observed value to the future, until there is a new observed value. if a variable is listed here, then it cannot have a value in default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
+#' @param TD_variables_with_definite_value_until_unobserved list of variables that extend the last observed value to the future, until either there is a new observed value, ot the UoO becomes unobserved by both datasets (this latter case is the only difference between the variable being listed here or in TD_variables_with_definite_value). if a variable is listed here, then it cannot have a value in default_value_for_unobserved nor in TD_variables_with_definite_value. note that missing values in observed periods are considered observed values and are never replaced
+#' @param keep_records_observed_by This character argument has the following admitted values (a) either: it means that all periods observed in at least one of the input datasets are retained (default) (b) first: it means that all periods observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all periods observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only periods observed in both input datasets are retained (e) none: it means also periods unobserved by either input datasets are retained (for example, if there is a period that is a 'hole' in both datasets, with this option it is retained)
+#' @param keep_UoO_observed_by This character argument has the following admitted values (a) either: it means that all UoOs observed in at least one of the input datasets are retained (default) (b) first: it means that all UoOs observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all UoOs observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only UoOs observed in both input datasets are retained 
 # supports formats integer, numeric, character, factor, Date, IDate, and logical
  
 GenerateTDDataset <- function(datasets,
@@ -24,7 +31,8 @@ GenerateTDDataset <- function(datasets,
                               baseline_value = list(),
                               TD_variables_with_definite_value = c(),
                               keep_auxiliary_variables = F,
-                              keep_observed_by = "either"
+                              keep_records_observed_by = "either",
+                              keep_UoOs_observed_by = "either"
                               ) {
   
   # libraries
@@ -64,12 +72,14 @@ GenerateTDDataset <- function(datasets,
     stop("Argument 'keep_auxiliary_variables' should have a logical value")
   }
   
-  if (!(keep_observed_by %in% c("both","either","first","second","none")) ) {
-    stop('Argument "keep_observed_by" should have a value chosen between "both","first","second","none"')
+  if (!(keep_records_observed_by %in% c("both","either","first","second","none")) ) {
+    stop('Argument "keep_records_observed_by" should have a value chosen between "both","first","second","none"')
   }
   
-  # keep_observed_by = "both"
-  
+  if (!(keep_UoOs_observed_by %in% c("both","either","first","second")) ) {
+    stop('Argument "keep_UoOs_observed_by" should have a value chosen between "both","first","second"')
+  }
+
   # Supported types
   supported_types <- c("integer", "numeric", "character", "factor", "Date",  "IDate", "logical")
   date_supported_types <- c("IDate", "Date", "integer")
@@ -183,10 +193,7 @@ GenerateTDDataset <- function(datasets,
   }
   TI_variables_final <- unique(c(unlist(TI_variables[1]), unlist(TI_variables[2])))
   
-  # ...
-    
-
-  
+ 
   ################################################
   # FUNCTION BODY
   ############################################
@@ -203,7 +210,46 @@ GenerateTDDataset <- function(datasets,
     }
   }
 
-  # Initialize lists for extreme_value and placeholder_value
+  # TO DO: if keep_UoOs_observed_by != "either", remove the UoOs that are not supposed to be included in the final output. we do this now to avoid processing records that will eventually be removed
+  
+  if (keep_UoOs_observed_by != "either"){
+    if (keep_UoOs_observed_by == "first"){
+      tokeep <- UoO_vars[[1]]
+      UoOs_to_keep <- unique(datasets[[1]][,..tokeep])
+      setnames(UoOs_to_keep,UoO_vars[[1]],"UoOsvarnameuniquetemp")
+      datasets_to_filter <- c(2)
+    }
+    if (keep_UoOs_observed_by == "second"){
+      tokeep <- UoO_vars[[2]]
+      UoOs_to_keep <- unique(datasets[[2]][,..tokeep])
+      setnames(UoOs_to_keep,UoO_vars[[2]],"UoOsvarnameuniquetemp")
+      datasets_to_filter <- c(1)
+    }
+    if (keep_UoOs_observed_by == "both"){
+      tokeep <- UoO_vars[[1]]
+      UoOs_to_keep1 <- unique(datasets[[1]][,..tokeep])
+      tokeep <- UoO_vars[[2]]
+      UoOs_to_keep2 <- unique(datasets[[2]][,..tokeep])
+      setnames(UoOs_to_keep1,UoO_vars[[1]],"UoOsvarnameuniquetemp")
+      setnames(UoOs_to_keep2,UoO_vars[[2]],"UoOsvarnameuniquetemp")
+      UoOs_to_keep <- merge(UoOs_to_keep1,UoOs_to_keep2, all = F)
+      datasets_to_filter <- c(1,2)
+    }
+    for (i in datasets_to_filter){
+      datasets[[i]] <- merge(datasets[[i]],UoOs_to_keep, by.x = UoO_vars[[1]], by.y = "UoOsvarnameuniquetemp")
+    }
+  }
+  
+  # Initialize lists for extreme_value and placeholder values, to be used as a placeholders for missing values arising in various steps of the processing: placeholder_value is in place of values that are missing in the original datasets, placeholder_vaue2 is in place of values that are missing because they fall in gap periods of the original dataset. 
+  
+  # placeholder values are created from the existing data and are values that are not found in the dataset, because they are either greater than the maximum, or smaller than the minimum (taking into account also default_value_for_unobserved and baseline_value, if assigned)
+  
+  # extreme_value is the minimum value for non-character variables, and maximum value for character variables; character values are treated differently because we cannot be sure that we can have a smaller value than a minimum for characters, while the maximum value for dates may be something that cannot be increased
+  
+  # placeholder_value is closer to extreme_value wrt to placeholder_value2. 
+  
+  # when replacing the placeholder in the future, to avoid problems with rounding, in the case of numeric variables, (a) instead of using (get(thisvar) == placeholder_value[[thisvar]]) let's use (get(thisvar) < extreme_value[[thisvar]] & get(thisvar) > placeholder_value2[[thisvar]]), and (b) instead of using (get(thisvar) == placeholder_value2[[thisvar]]) let's use (get(thisvar) < placeholder_value[[thisvar]]), and (c) instead of using (get(thisvar) == placeholder_value[[thisvar]] | get(thisvar) == placeholder_value2[[thisvar]] | ) let's use (get(thisvar) < extreme_value[[thisvar]])
+  
   extreme_value <- list()
   placeholder_value <- list()
   placeholder_value2 <- list()
@@ -213,26 +259,48 @@ GenerateTDDataset <- function(datasets,
     for (thisvar in unlist(TD_variables[[i]])) {
       # Find the minimum value of non-missing values, except for characters where we pick the maximum
       non_missing_vals <- datasets[[i]][!is.na(get(thisvar)), get(thisvar)]
-      if (length(non_missing_vals) > 0) {
-        var_class <- class(datasets[[i]][[thisvar]])
-        if (var_class != "character"){
+      var_class <- class(datasets[[i]][[thisvar]])
+      
+      if (var_class != "character"){
+        if (length(non_missing_vals) > 0) {
           min_val <- min(non_missing_vals, na.rm = TRUE)
+          if (!is.null(baseline_value[[thisvar]])){
+            min_val <- min(min_val,baseline_value[[thisvar]])
+          }
+          if (!is.null(default_value_for_unobserved[[thisvar]])){
+            min_val <- min(min_val,default_value_for_unobserved[[thisvar]])
+          }
           extreme_value[[thisvar]] <- min_val
           placeholder_value[[thisvar]] <- min_val - 1
           placeholder_value2[[thisvar]] <- min_val - 2
         }else{
+          extreme_value[[thisvar]] <- NA
+          placeholder_value[[thisvar]] <- NA
+          placeholder_value2[[thisvar]] <- NA
+        }
+      }
+      if (var_class == "character"){
+        if (length(non_missing_vals) > 0) {
           max_val <- max(non_missing_vals, na.rm = TRUE)
+          if (!is.null(baseline_value[[thisvar]])){
+            max_val <- max(max_val,baseline_value[[thisvar]])
+          }
+          if (!is.null(default_value_for_unobserved[[thisvar]])){
+            max_val <- max(max_val,default_value_for_unobserved[[thisvar]])
+          }
           extreme_value[[thisvar]] <- max_val
           placeholder_value[[thisvar]] <- paste0(max_val,"Z")
           placeholder_value2[[thisvar]] <- paste0(max_val,"ZZ")
+        }else {
+          extreme_value[[thisvar]] <- NA # "Z"
+          placeholder_value[[thisvar]] <- NA # "ZZ"
+          placeholder_value2[[thisvar]] <- NA # "ZZZ"
         }
-      } else {
-        extreme_value[[thisvar]] <- NA
-        placeholder_value[[thisvar]] <- NA
       }
     }
   }
   
+
   
 
   # Replace missing values with placeholder_value
@@ -396,10 +464,30 @@ GenerateTDDataset <- function(datasets,
   # TO COMPLETE: enact the various options to fill variables during their unobserved periods
 
   # baseline_value[[thisvar]]: if assigned, this is the value that must replace NA during the baseline period, if any 
-  # default_value_for_unobserved[[thisvar]]: if assigned, this is the value that must replace placeholder2 everywhere else (if baseline_value[[thisvar]] is unassigned, this will replace both NAs and placeholder2)
-  # TD_variables_with_definite_value: if thisvar is in this list, then all placeholder2 must be replaced by the corresponding last observed value of thisvar
+  # default_value_for_unobserved[[thisvar]]: if assigned, this is the value that must replace placeholder2 everywhere else (if baseline_value[[thisvar]] is unassigned, this will replace both NAs and placeholder_value2)
+  # TD_variables_with_definite_value: if thisvar is in this list, then all placeholder_value2 must be replaced by the corresponding last observed value of thisvar
+  # TD_variables_with_definite_value_until_unobserved like the latter but make suer this does not happen if there is a period unobserved in both datasets 
   
-  # TO CHECK IF THIs WORKS: fill missing values within the observed periods for TD_variables_with_definite_value
+  
+  # implement baseline_value[[thisvar]]: it must replace truly missing values that are seen before the first observed period (or, all missing values if the UoO is not observed in the dataset at all)
+  for (thisvar in names(baseline_value)){
+    for (i in 1:2) {
+      if (thisvar %in% TD_variables[[i]]) {
+        # View(dt_final)
+        if (classesvarsunique[[thisvar]] == "numeric"){
+          dt_final[(get(thisvar) < placeholder[[thisvar]] | is.na(get(thisvar)))  & (is.na(get(paste0("first_day_observed_",i))) | get(end_d_var_final) < get(paste0("first_day_observed_",i))), (thisvar) := baseline_value[[thisvar]] ]
+        }else{
+          dt_final[(get(thisvar) == placeholder_value[[thisvar]] | get(thisvar) == placeholder_value2[[thisvar]] | is.na(get(thisvar)) ) & (is.na(get(paste0("first_day_observed_",i))) | get(end_d_var_final) < get(paste0("first_day_observed_",i))), (thisvar) := baseline_value[[thisvar]] ]
+          
+          
+        }
+      }
+    }
+  }
+
+
+
+  # fill missing values within the observed periods for TD_variables_with_definite_value
   for (thisvar in c(TD_variables_final) ) {
     if (thisvar %in% TD_variables_with_definite_value){
       if (classesvarsunique[[thisvar]] == "numeric"){
@@ -410,38 +498,43 @@ GenerateTDDataset <- function(datasets,
       dt_final[, (thisvar) := zoo::na.locf(get(thisvar), na.rm = FALSE), by = UoO_var_final]
     }
   }
-  
-  
-  # baseline_value[[thisvar]]
-  
+
+  # TO DO: implement TD_variables_with_definite_value_until_unobserved
+
   # ...
-  
-  # default_value_for_unobserved[[thisvar]]
-  
-  # ...
- 
+
+  # TO DO: implement default_value_for_unobserved[[thisvar]]
+
+  for (thisvar in names(default_value_for_unobserved) ) {
+    if (classesvarsunique[[thisvar]] == "numeric"){
+      dt_final[get(thisvar) < placeholder[[thisvar]] | is.na(get(thisvar)), (thisvar) := default_value_for_unobserved[[thisvar]] ]
+    }else{
+      dt_final[get(thisvar) == placeholder_value[[thisvar]] | get(thisvar) == placeholder_value2[[thisvar]] | is.na(get(thisvar)), (thisvar) := default_value_for_unobserved[[thisvar]] ]
+
+    }
+  }
+
       
   # remove unobserved times
   
-  if (keep_observed_by == "either"){
+  if (keep_records_observed_by == "either"){
     dt_final <- dt_final[ observed_1 == 1 | observed_2 == 1,]
   }
-  if (keep_observed_by == "both"){
+  if (keep_records_observed_by == "both"){
     dt_final <- dt_final[ observed_1 == 1 & observed_2 == 1,]
   }
-  if (keep_observed_by == "first"){
+  if (keep_records_observed_by == "first"){
     dt_final <- dt_final[ observed_1 == 1,]
   }
-  if (keep_observed_by == "second"){
+  if (keep_records_observed_by == "second"){
     dt_final <- dt_final[ observed_2 == 1,]
   }
-  # if keep_observed_by == "none", ther the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
-  if (keep_observed_by == "none"){
+  # if keep_records_observed_by == "none", ther the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
+  if (keep_records_observed_by == "none"){
   }
   
-  # ...
 
-  # restore missing values marked by placeholder_value[[thisvar]] (in the case of numeric variables these are values "get(thisvar) < extremevalue[[thisvar]]", in the other cases these are "get(thisvar) == placeholder_value[[thisvar]]")
+  # restore missing values marked by placeholder_value[[thisvar]] 
   
   for (thisvar in TD_variables_final){
     if (classesvarsunique[[thisvar]] == "numeric"){
@@ -452,9 +545,6 @@ GenerateTDDataset <- function(datasets,
     }
   }
     
-  # TO DO: recast logical TD_variables from integers, and Dates from IDate
-  
-  # ...
   # Cast logical TD_variables to integers and Dates to IDate
   for (thisvar in TD_variables_final) {
     var_class <- classesvarsunique[[thisvar]]

@@ -1,4 +1,6 @@
-# Slightly more complex: the cohort has already an additional variable, the other dataset has two variables
+# Slightly more complex: the first dataset is the cohort and it has already an additional variable, the other dataset has three variables partially unobserved. Moreover, in the the cohort there is one UoO that is completely missing from the second dataset
+
+# We do not make any assumption on the unobsered periods for the three variables in the second dataset, therefore in the output they have missing values whenever unobserved
 
 rm(list=ls(all.names=TRUE))
 
@@ -21,11 +23,12 @@ outputTD <- GenerateTDDataset(datasets = list(cohort_and_vars,other_vars),
                               UoO_vars = c("person_id","person_id"),
                               start_d_vars = c("st_d","st_d"),
                               end_d_vars = c("end_d","end_d"),
-                              TD_variables = list(list("in_study","city"),list("diabetes","most_recent_vaccine")),
+                              TD_variables = list(list("in_study","city"),list("diabetes","most_recent_vaccine","use_of_aspirin")),
                               keep_auxiliary_variables = T,
-                              keep_observed_by = "none"
+                              keep_records_observed_by = "none",
+                              keep_UoOs_observed_by = "first"
                               #,
                               )
 
-# fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
+fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
 

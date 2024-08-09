@@ -28,5 +28,5 @@ outputTD <- GenerateTDDataset(datasets = list(cohort,vardataset),
                               keep_auxiliary_variables = T #,
                               )
 
-# fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
+fwrite(outputTD, file = file.path(thisdir,"g_output","output.csv"))
 

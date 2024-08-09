@@ -2,4 +2,4 @@ person_id,st_d,end_d,diabetes,most_recent_vaccine,use_of_aspirin
 P01,10,200,1,,1
 P01,201,250,1,201,0
 P02,200,500,1,,1
-P03,400,500,,400,1
+P03,400,500,0,400,1

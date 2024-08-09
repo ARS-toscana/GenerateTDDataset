@@ -1,0 +1,11 @@
+person_id,study_entry,study_exit,st_d,end_d,in_study,city,diabetes,most_recent_vaccine,use_of_aspirin,observed_1,observed_2,first_day_observed_1,last_day_observed_1,first_day_observed_2,last_day_observed_2
+P01,1,500,1,9,1,Rome,0,,0,1,0,1,500,10,250
+P01,1,500,10,200,1,Rome,1,,1,1,1,1,500,10,250
+P01,1,500,201,250,1,Nairobi,1,201,0,1,1,1,500,10,250
+P01,1,500,251,300,1,Nairobi,1,201,0,1,0,1,500,10,250
+P01,1,500,301,500,1,Vancouver,1,201,0,1,0,1,500,10,250
+P02,1,500,1,150,1,Sidney,0,,0,1,0,1,500,200,500
+P02,1,500,151,199,1,Rio de Janeiro,0,,0,1,0,1,500,200,500
+P02,1,500,200,500,1,Rio de Janeiro,1,,1,1,1,1,500,200,500
+P03,1,500,1,399,1,Shanghai,0,,0,1,0,1,500,400,500
+P03,1,500,400,500,1,Shanghai,0,400,1,1,1,1,500,400,500
