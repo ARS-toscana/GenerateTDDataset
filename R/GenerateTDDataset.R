@@ -1,6 +1,11 @@
 #' GenerateTDDataset
 #'
-#' Version 0.9 
+#' Version 0.91 
+#' 24 Aug 2024
+#'
+#' renamed argument -keep_records_observed_by- to keep_periods_observed_by-
+#' 
+#' #' Version 0.9 
 #' 9 Aug 2024
 #'
 #' Implemented and tested Examples 1, 2, 3 and basic functionalities
@@ -18,7 +23,7 @@
 #' @param baseline_value lists of list of values: baseline value for those TD_variables that have a baseline value; if this argument is not assigned for a variable (default), for that variable the baseline periods, if unobserved, remain assigned at missing, unless default_value_for_unobserved is specified. if both default_value_for_unobserved and baseline_value are specified, then unobserved periods before the first observation are set to baseline_value, and those after are set to default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
 #' @param TD_variables_with_definite_value list of variables that extend the last observed value to the future, until there is a new observed value. if a variable is listed here, then it cannot have a value in default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
 #' @param TD_variables_with_definite_value_until_unobserved list of variables that extend the last observed value to the future, until either there is a new observed value, ot the UoO becomes unobserved by both datasets (this latter case is the only difference between the variable being listed here or in TD_variables_with_definite_value). if a variable is listed here, then it cannot have a value in default_value_for_unobserved nor in TD_variables_with_definite_value. note that missing values in observed periods are considered observed values and are never replaced
-#' @param keep_records_observed_by This character argument has the following admitted values (a) either: it means that all periods observed in at least one of the input datasets are retained (default) (b) first: it means that all periods observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all periods observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only periods observed in both input datasets are retained (e) none: it means also periods unobserved by either input datasets are retained (for example, if there is a period that is a 'hole' in both datasets, with this option it is retained)
+#' @param keep_periods_observed_by This character argument has the following admitted values (a) either: it means that all periods observed in at least one of the input datasets are retained (default) (b) first: it means that all periods observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all periods observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only periods observed in both input datasets are retained (e) none: it means also periods unobserved by either input datasets are retained (for example, if there is a period that is a 'hole' in both datasets, with this option it is retained)
 #' @param keep_UoO_observed_by This character argument has the following admitted values (a) either: it means that all UoOs observed in at least one of the input datasets are retained (default) (b) first: it means that all UoOs observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all UoOs observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only UoOs observed in both input datasets are retained 
 # supports formats integer, numeric, character, factor, Date, IDate, and logical
  
@@ -31,7 +36,7 @@ GenerateTDDataset <- function(datasets,
                               baseline_value = list(),
                               TD_variables_with_definite_value = c(),
                               keep_auxiliary_variables = F,
-                              keep_records_observed_by = "either",
+                              keep_periods_observed_by = "either",
                               keep_UoOs_observed_by = "either"
                               ) {
   
@@ -72,8 +77,8 @@ GenerateTDDataset <- function(datasets,
     stop("Argument 'keep_auxiliary_variables' should have a logical value")
   }
   
-  if (!(keep_records_observed_by %in% c("both","either","first","second","none")) ) {
-    stop('Argument "keep_records_observed_by" should have a value chosen between "both","first","second","none"')
+  if (!(keep_periods_observed_by %in% c("both","either","first","second","none")) ) {
+    stop('Argument "keep_periods_observed_by" should have a value chosen between "both","first","second","none"')
   }
   
   if (!(keep_UoOs_observed_by %in% c("both","either","first","second")) ) {
@@ -517,20 +522,20 @@ GenerateTDDataset <- function(datasets,
       
   # remove unobserved times
   
-  if (keep_records_observed_by == "either"){
+  if (keep_periods_observed_by == "either"){
     dt_final <- dt_final[ observed_1 == 1 | observed_2 == 1,]
   }
-  if (keep_records_observed_by == "both"){
+  if (keep_periods_observed_by == "both"){
     dt_final <- dt_final[ observed_1 == 1 & observed_2 == 1,]
   }
-  if (keep_records_observed_by == "first"){
+  if (keep_periods_observed_by == "first"){
     dt_final <- dt_final[ observed_1 == 1,]
   }
-  if (keep_records_observed_by == "second"){
+  if (keep_periods_observed_by == "second"){
     dt_final <- dt_final[ observed_2 == 1,]
   }
-  # if keep_records_observed_by == "none", ther the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
-  if (keep_records_observed_by == "none"){
+  # if keep_periods_observed_by == "none", ther the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
+  if (keep_periods_observed_by == "none"){
   }
   
 

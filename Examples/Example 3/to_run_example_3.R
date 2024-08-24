@@ -31,7 +31,7 @@ outputTD <- GenerateTDDataset(datasets = list(cohort_and_vars,other_vars),
                               end_d_vars = c("end_d","end_d"),
                               TD_variables = list(list("in_study","city"),list("diabetes","most_recent_vaccine","use_of_aspirin")),
                               keep_auxiliary_variables = T,
-                              keep_records_observed_by = "first",
+                              keep_periods_observed_by = "first",
                               baseline_value = list(
                                 "diabetes" = 0
                               ),
