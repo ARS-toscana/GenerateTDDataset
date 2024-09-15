@@ -1,5 +1,15 @@
 #' GenerateTDDataset
 #'
+#' Version 0.92 
+#' 15 Sep 2024
+#'
+#' replaced mechanism to manage observations that starts on the same day on both datasets: from (rbind + collapse) to merge
+#' implemented option TD_variables_with_definite_value_until_unobserved
+#' fixed bug if nrow(to_add) > 1 -> nrow(to_add) > 0
+#' fixed bug added na.rm = TRUE in calculation of max(get(end_d_vars[i]), na.rm = TRUE),  by = c(UoO_vars[i]) 
+#' replaced datasets with datasets_to_process in the body function 
+#' fixed typos placeholder -> placeholder_value, extremevalue -> extreme_value
+#'
 #' Version 0.91 
 #' 24 Aug 2024
 #'
@@ -22,7 +32,7 @@
 #' @param default_value_for_unobserved lists of list of values: default value for those TD_variables that have a default value; if this argument is not assigned for a variable (default), for that variable unobserved periods either remain assigned at missing, or are governed by baseline_value and/or TD_variables_with_definite_value, if specified. note that missing values in observed periods are considered observed values and are never replaced
 #' @param baseline_value lists of list of values: baseline value for those TD_variables that have a baseline value; if this argument is not assigned for a variable (default), for that variable the baseline periods, if unobserved, remain assigned at missing, unless default_value_for_unobserved is specified. if both default_value_for_unobserved and baseline_value are specified, then unobserved periods before the first observation are set to baseline_value, and those after are set to default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
 #' @param TD_variables_with_definite_value list of variables that extend the last observed value to the future, until there is a new observed value. if a variable is listed here, then it cannot have a value in default_value_for_unobserved. note that missing values in observed periods are considered observed values and are never replaced
-#' @param TD_variables_with_definite_value_until_unobserved list of variables that extend the last observed value to the future, until either there is a new observed value, ot the UoO becomes unobserved by both datasets (this latter case is the only difference between the variable being listed here or in TD_variables_with_definite_value). if a variable is listed here, then it cannot have a value in default_value_for_unobserved nor in TD_variables_with_definite_value. note that missing values in observed periods are considered observed values and are never replaced
+#' @param TD_variables_with_definite_value_until_unobserved list of variables that extend the last observed value to the future, until either there is a new observed value, or the UoO becomes unobserved by the corresponding datasets: the difference with TD_variables_with_definite_value are that, on the one hand, missing values in observed periods are also replaced, but on the other, unobserved periods are not replaced. if a variable is listed here, then it cannot have a value in default_value_for_unobserved nor in TD_variables_with_definite_value. note that missing values in observed periods are considered observed values and are never replaced
 #' @param keep_periods_observed_by This character argument has the following admitted values (a) either: it means that all periods observed in at least one of the input datasets are retained (default) (b) first: it means that all periods observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all periods observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only periods observed in both input datasets are retained (e) none: it means also periods unobserved by either input datasets are retained (for example, if there is a period that is a 'hole' in both datasets, with this option it is retained)
 #' @param keep_UoO_observed_by This character argument has the following admitted values (a) either: it means that all UoOs observed in at least one of the input datasets are retained (default) (b) first: it means that all UoOs observed in the first input dataset are retained, irrespective of whether they are observed in the second (c) second: it means that all UoOs observed in the second input dataset are retained, irrespective of whether they are observed in the first (d) both: it means only UoOs observed in both input datasets are retained 
 # supports formats integer, numeric, character, factor, Date, IDate, and logical
@@ -35,6 +45,7 @@ GenerateTDDataset <- function(datasets,
                               default_value_for_unobserved = list(),
                               baseline_value = list(),
                               TD_variables_with_definite_value = c(),
+                      TD_variables_with_definite_value_until_unobserved = c(),
                               keep_auxiliary_variables = F,
                               keep_periods_observed_by = "either",
                               keep_UoOs_observed_by = "either"
@@ -121,7 +132,7 @@ GenerateTDDataset <- function(datasets,
     }
   }
   
-   # TO DO: check that the following arguments default_value_for_unobserved, baseline_value and TD_variables_with_definite_valuecontain correct values and are not in contradiction with each other, as follows:
+   # TO DO: check that the following arguments default_value_for_unobserved, baseline_value and TD_variables_with_definite_value contain correct values and are not in contradiction with each other, as follows:
   # default_value_for_unobserved[[thisvar]] must have the same class as thisvar
   # baseline_value[[thisvar]] must have the same class as thisvar
   # TD_variables_with_definite_value is a vector containing elements of the list TD_variables_final
@@ -203,14 +214,18 @@ GenerateTDDataset <- function(datasets,
   # FUNCTION BODY
   ############################################
 
+  # Replace datasets[[i]] with a copy, so that the original datasets are not modified
+  
+  datasets_to_process <- lapply(datasets, copy)
+  
   # Cast logical TD_variables to integers and Dates to IDate
   for (i in 1:2) {
     for (var in unlist(TD_variables[[i]])) {
-      var_class <- class(datasets[[i]][[var]])
+      var_class <- class(datasets_to_process[[i]][[var]])
       if (var_class == "logical") {
-        datasets[[i]][[var]] <- as.integer(datasets[[i]][[var]])
+        datasets_to_process[[i]][[var]] <- as.integer(datasets_to_process[[i]][[var]])
       } else if (var_class %in% c("Date")) {
-        datasets[[i]][[var]] <- as.IDate(datasets[[i]][[var]])
+        datasets_to_process[[i]][[var]] <- as.IDate(datasets_to_process[[i]][[var]])
       }
     }
   }
@@ -220,28 +235,28 @@ GenerateTDDataset <- function(datasets,
   if (keep_UoOs_observed_by != "either"){
     if (keep_UoOs_observed_by == "first"){
       tokeep <- UoO_vars[[1]]
-      UoOs_to_keep <- unique(datasets[[1]][,..tokeep])
+      UoOs_to_keep <- unique(datasets_to_process[[1]][,..tokeep])
       setnames(UoOs_to_keep,UoO_vars[[1]],"UoOsvarnameuniquetemp")
       datasets_to_filter <- c(2)
     }
     if (keep_UoOs_observed_by == "second"){
       tokeep <- UoO_vars[[2]]
-      UoOs_to_keep <- unique(datasets[[2]][,..tokeep])
+      UoOs_to_keep <- unique(datasets_to_process[[2]][,..tokeep])
       setnames(UoOs_to_keep,UoO_vars[[2]],"UoOsvarnameuniquetemp")
       datasets_to_filter <- c(1)
     }
     if (keep_UoOs_observed_by == "both"){
       tokeep <- UoO_vars[[1]]
-      UoOs_to_keep1 <- unique(datasets[[1]][,..tokeep])
+      UoOs_to_keep1 <- unique(datasets_to_process[[1]][,..tokeep])
       tokeep <- UoO_vars[[2]]
-      UoOs_to_keep2 <- unique(datasets[[2]][,..tokeep])
+      UoOs_to_keep2 <- unique(datasets_to_process[[2]][,..tokeep])
       setnames(UoOs_to_keep1,UoO_vars[[1]],"UoOsvarnameuniquetemp")
       setnames(UoOs_to_keep2,UoO_vars[[2]],"UoOsvarnameuniquetemp")
       UoOs_to_keep <- merge(UoOs_to_keep1,UoOs_to_keep2, all = F)
       datasets_to_filter <- c(1,2)
     }
     for (i in datasets_to_filter){
-      datasets[[i]] <- merge(datasets[[i]],UoOs_to_keep, by.x = UoO_vars[[1]], by.y = "UoOsvarnameuniquetemp")
+      datasets_to_process[[i]] <- merge(datasets_to_process[[i]],UoOs_to_keep, by.x = UoO_vars[[1]], by.y = "UoOsvarnameuniquetemp")
     }
   }
   
@@ -263,10 +278,10 @@ GenerateTDDataset <- function(datasets,
   for (i in 1:2) {
     for (thisvar in unlist(TD_variables[[i]])) {
       # Find the minimum value of non-missing values, except for characters where we pick the maximum
-      non_missing_vals <- datasets[[i]][!is.na(get(thisvar)), get(thisvar)]
-      var_class <- class(datasets[[i]][[thisvar]])
-      
-      if (var_class != "character"){
+      non_missing_vals <- datasets_to_process[[i]][!is.na(get(thisvar)), get(thisvar)]
+      var_class <- class(datasets_to_process[[i]][[thisvar]])
+
+      if (var_class[1] != "character"){
         if (length(non_missing_vals) > 0) {
           min_val <- min(non_missing_vals, na.rm = TRUE)
           if (!is.null(baseline_value[[thisvar]])){
@@ -284,7 +299,7 @@ GenerateTDDataset <- function(datasets,
           placeholder_value2[[thisvar]] <- NA
         }
       }
-      if (var_class == "character"){
+      if (var_class[1] == "character"){
         if (length(non_missing_vals) > 0) {
           max_val <- max(non_missing_vals, na.rm = TRUE)
           if (!is.null(baseline_value[[thisvar]])){
@@ -312,54 +327,55 @@ GenerateTDDataset <- function(datasets,
   for (i in 1:2) {
     for (thisvar in unlist(TD_variables[[i]])) {
       if (!is.na(placeholder_value[[thisvar]])) {
-        datasets[[i]][is.na(get(thisvar)), (thisvar) := placeholder_value[[thisvar]]]
+        datasets_to_process[[i]][is.na(get(thisvar)), (thisvar) := placeholder_value[[thisvar]]]
       }
     }
   }
   
   # Add logical variable 'observed_1' and 'observed_2'
-  datasets[[1]][, observed_1 := 1]
-  datasets[[2]][, observed_2 := 1]
+  datasets_to_process[[1]][, observed_1 := 1]
+  datasets_to_process[[2]][, observed_2 := 1]
   
   
   # fill the gaps between intervals of the same id
   for (i in 1:2) {
     # Set keys using the dynamic column names
-    setkeyv(datasets[[i]], c(UoO_vars[i], start_d_vars[i], end_d_vars[i]))
+    setkeyv(datasets_to_process[[i]], c(UoO_vars[i], start_d_vars[i], end_d_vars[i]))
     
     # Define end_prev and identify gaps
-    datasets[[i]][, end_prev := shift(get(end_d_vars[i]), type = "lag"), by = c(UoO_vars[i])]
-    to_add <- copy(datasets[[i]])[!is.na(end_prev) & end_prev < get(start_d_vars[i]) - 1, 
+    datasets_to_process[[i]][, end_prev := shift(get(end_d_vars[i]), type = "lag"), by = c(UoO_vars[i])]
+    to_add <- copy(datasets_to_process[[i]])[!is.na(end_prev) & end_prev < get(start_d_vars[i]) - 1, 
                       .(get(UoO_vars[i]), end_prev)]
-   if (nrow(to_add) > 1){
+   if (nrow(to_add) > 0){
       setnames(to_add, "V1", UoO_vars[i])
       to_add[, (start_d_vars[i]) := end_prev + 1]
       # to_add[, (end_d_vars[i]) := get(start_d_vars[i]) - 1]
       # mark that the new records are unobserved
       to_add <- to_add[,(paste0("observed_",i)) := 0]
       # Append the new rows to the original dataset
-      datasets[[i]] <- rbind(datasets[[i]], to_add, fill = TRUE)
+      datasets_to_process[[i]] <- rbind(datasets_to_process[[i]], to_add, fill = TRUE)
    }
     rm(to_add)
     #remove auxiliary variable
-    datasets[[i]][, end_prev := NULL]
+    datasets_to_process[[i]][, end_prev := NULL]
     # add start and end of the overall observation as a separate variable
-    datasets[[i]][,(paste0("first_day_observed_",i)) := min(get(start_d_vars[i])),  by = c(UoO_vars[i]) ]
-    datasets[[i]][,(paste0("last_day_observed_",i)) := max(get(end_d_vars[i])),  by = c(UoO_vars[i]) ]
+    datasets_to_process[[i]][,(paste0("first_day_observed_",i)) := min(get(start_d_vars[i])),  by = c(UoO_vars[i]) ]
+    datasets_to_process[[i]][,(paste0("last_day_observed_",i)) := max(get(end_d_vars[i]), na.rm = TRUE),  by = c(UoO_vars[i]) ]
     # add a row that contains the next day to the last
-    to_add <- unique(copy(datasets[[i]])[,.(get(UoO_vars[i]), get(paste0("last_day_observed_",i)))])
+    to_add <- unique(copy(datasets_to_process[[i]])[,.(get(UoO_vars[i]), get(paste0("last_day_observed_",i)))])
     setnames(to_add,c("V1","V2"),c(UoO_vars[i],end_d_vars[i]))
     to_add[, (start_d_vars[i]) := get(end_d_vars[i]) + 1]
     to_add <- to_add[,(paste0("observed_",i)) := 0]
     # Append the new rows to the original dataset
-    datasets[[i]] <- rbind(datasets[[i]], to_add, fill = TRUE)
+    datasets_to_process[[i]] <- rbind(datasets_to_process[[i]], to_add, fill = TRUE)
     rm(to_add)
     #remove end of each period
-    datasets[[i]][, (end_d_vars[i]) := NULL]
+    datasets_to_process[[i]][, (end_d_vars[i]) := NULL]
+
     # mark each observation in unobserved record with placeholder value 2
     for (thisvar in unlist(TD_variables[[i]])) {
       if (!is.na(placeholder_value2[[thisvar]])) {
-        datasets[[i]][is.na(get(thisvar)) & get(paste0("observed_",i)) == 0, (thisvar) := placeholder_value2[[thisvar]]]
+        datasets_to_process[[i]][is.na(get(thisvar)) & get(paste0("observed_",i)) == 0, (thisvar) := placeholder_value2[[thisvar]]]
       }
     }
   }
@@ -367,51 +383,27 @@ GenerateTDDataset <- function(datasets,
   # set the name of UoO_var_final as UoO_vars[1]
   UoO_var_final <- UoO_vars[1]
   if (UoO_vars[2] != UoO_vars[1]){
-    setnames(datasets[[2]], get(UoO_vars[2]), UoO_var_final)
+    setnames(datasets_to_process[[2]], get(UoO_vars[2]), UoO_var_final)
   }
   
   # set the name of start_d_var_final as start_d_vars[1]
   start_d_var_final <- start_d_vars[1]
   if (start_d_vars[2] != start_d_vars[1]){
-    datasets[[2]][, (start_d_var_final) := get(start_d_vars[2])]
+    # datasets_to_process[[2]][, (start_d_var_final) := get(start_d_vars[2])]
+    setnames(datasets_to_process[[2]],start_d_vars[2],start_d_vars[1])
   }
   
   # set the name of end_d_var_final as end_d_vars[1]
   end_d_var_final <- end_d_vars[1]
-  
-  #########################
-  # rbind the two datasets and sort 
-  dt_final <- rbind(datasets[[1]],datasets[[2]], fill = T)
-  setkeyv(dt_final, c(UoO_var_final, start_d_var_final))
-  
-  ##############
-  # collapse values of all the variables of dt_final observed on the same day: collapse all variables to their max by UoO_var_final and start_d_var_final, ignoring missing values
 
-  cols_to_collapse <- setdiff(names(dt_final), c(UoO_var_final,start_d_var_final))
-  
-  collapsed_dt <- dt_final[, lapply(.SD, function(x) {
-    # Check if all values are NA
-    if (all(is.na(x))) {
-      # Return NA of the appropriate type based on the class of x
-      na_value <- switch(class(x)[1],
-                         "integer" = NA_integer_,
-                         "numeric" = NA_real_,
-                         "character" = NA_character_,
-                         "factor" = NA_character_,  # For factors, NA_character_ is returned since NA_factor_ does not exist
-                         "logical" = NA)
-      return(na_value)
-    } else {
-      # Calculate max, ignoring NA values
-      return(max(x, na.rm = TRUE))
-    }
-  }), by = c(UoO_var_final,start_d_var_final), .SDcols = cols_to_collapse]
-  
-  # # Replace -Inf (result of max when all are NA) with NA
-  # collapsed_dt[is.infinite(collapsed_dt)] <- NA
-  
-  # Replace original dt with collapsed_dt
-  dt_final <- collapsed_dt
-  rm(collapsed_dt)
+  #########################
+  # merge the two datasets_to_process (in case there is a date observed by both) and sort
+  tokeep1 <- c(UoO_var_final, start_d_var_final, unlist(TD_variables[[1]]),"observed_1","first_day_observed_1","last_day_observed_1")
+  tokeep2 <- c(UoO_var_final, start_d_var_final, unlist(TD_variables[[2]]),"observed_2","first_day_observed_2","last_day_observed_2")
+  dt_final <- merge(datasets_to_process[[1]][,..tokeep1],datasets_to_process[[2]][,..tokeep2], by = c(UoO_var_final, start_d_var_final), all = T, allow.cartesian = T)
+  setkeyv(dt_final, c(UoO_var_final, start_d_var_final))
+
+
   
   ###########
   # generate end of observation time (end_d_var_final): this is NA for the last record of UoO_var_final, and for the previous it is start_d_var_final of the next record, - 1. then, order the names of the variables and put UoO_var_final,start_d_var_final,end_d_var_final first
@@ -422,7 +414,9 @@ GenerateTDDataset <- function(datasets,
 
   dt_final <- dt_final[ !(is.na(get(end_d_var_final))), ]
   
-    ordervar <- c(UoO_var_final, TI_variables_final, start_d_var_final,end_d_var_final, TD_variables_final, setdiff(names(dt_final), c(UoO_var_final, TI_variables_final, start_d_var_final,end_d_var_final, TD_variables_final)))
+    # ordervar <- c(UoO_var_final, TI_variables_final, start_d_var_final,end_d_var_final, TD_variables_final, setdiff(names(dt_final), c(UoO_var_final, TI_variables_final, start_d_var_final,end_d_var_final, TD_variables_final)))
+  
+  ordervar <- c(UoO_var_final, start_d_var_final,end_d_var_final, TD_variables_final, setdiff(names(dt_final), c(UoO_var_final, start_d_var_final,end_d_var_final, TD_variables_final)))
   
   dt_final <- dt_final[, ..ordervar]
   
@@ -439,29 +433,18 @@ GenerateTDDataset <- function(datasets,
   
   ################
   # reproduce values of TI_variables_final including first and last day observed
-  
-  cols_to_collapse <-  c(TI_variables_final,"first_day_observed_1","last_day_observed_1","first_day_observed_2","last_day_observed_2")
 
-  collapsed_dt <- dt_final[, lapply(.SD, function(x) {
-    # Check if all values are NA
-    if (all(is.na(x))) {
-      # Return NA of the appropriate type based on the class of x
-      na_value <- switch(class(x)[1],
-                         "integer" = NA_integer_,
-                         "numeric" = NA_real_,
-                         "character" = NA_character_,
-                         "factor" = NA_character_,  # For factors, NA_character_ is returned since NA_factor_ does not exist
-                         "logical" = NA)
-      return(na_value)
-    } else {
-      # Calculate max, ignoring NA values
-      return(max(x, na.rm = TRUE))
+  for (i in 1:2) { 
+    if (length(unlist((TI_variables[[i]]))) > 0){
+      tokeep <- c(UoO_var_final, unlist((TI_variables[[i]])))
+      # print(i)
+      # print(tokeep)
+      # View(dt_final)
+      # View(unique(datasets[[i]][,..tokeep]))
+      dt_final <- merge(dt_final,unique(datasets[[i]][,..tokeep]),by = UoO_var_final, all.x = T )
+      }
     }
-  }), by = c(UoO_var_final), .SDcols = cols_to_collapse]
-  
-  dt_final <- merge(dt_final[, c(TI_variables_final,"first_day_observed_1","last_day_observed_1","first_day_observed_2","last_day_observed_2") := NULL], collapsed_dt, by = UoO_var_final)
-  rm(collapsed_dt)
-  
+                    
   ###########
   # optional replacements of missing values
   
@@ -471,7 +454,7 @@ GenerateTDDataset <- function(datasets,
   # baseline_value[[thisvar]]: if assigned, this is the value that must replace NA during the baseline period, if any 
   # default_value_for_unobserved[[thisvar]]: if assigned, this is the value that must replace placeholder2 everywhere else (if baseline_value[[thisvar]] is unassigned, this will replace both NAs and placeholder_value2)
   # TD_variables_with_definite_value: if thisvar is in this list, then all placeholder_value2 must be replaced by the corresponding last observed value of thisvar
-  # TD_variables_with_definite_value_until_unobserved like the latter but make suer this does not happen if there is a period unobserved in both datasets 
+  # TD_variables_with_definite_value_until_unobserved like the latter but make sure this does not happen if there is a period unobserved in both datasets 
   
   
   # implement baseline_value[[thisvar]]: it must replace truly missing values that are seen before the first observed period (or, all missing values if the UoO is not observed in the dataset at all)
@@ -504,15 +487,11 @@ GenerateTDDataset <- function(datasets,
     }
   }
 
-  # TO DO: implement TD_variables_with_definite_value_until_unobserved
-
-  # ...
-
-  # TO DO: implement default_value_for_unobserved[[thisvar]]
+  # implement default_value_for_unobserved[[thisvar]]
 
   for (thisvar in names(default_value_for_unobserved) ) {
     if (classesvarsunique[[thisvar]] == "numeric"){
-      dt_final[get(thisvar) < placeholder[[thisvar]] | is.na(get(thisvar)), (thisvar) := default_value_for_unobserved[[thisvar]] ]
+      dt_final[get(thisvar) < placeholder_value[[thisvar]] | is.na(get(thisvar)), (thisvar) := default_value_for_unobserved[[thisvar]] ]
     }else{
       dt_final[get(thisvar) == placeholder_value[[thisvar]] | get(thisvar) == placeholder_value2[[thisvar]] | is.na(get(thisvar)), (thisvar) := default_value_for_unobserved[[thisvar]] ]
 
@@ -534,7 +513,7 @@ GenerateTDDataset <- function(datasets,
   if (keep_periods_observed_by == "second"){
     dt_final <- dt_final[ observed_2 == 1,]
   }
-  # if keep_periods_observed_by == "none", ther the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
+  # if keep_periods_observed_by == "none", then the results keeps everything, including intervals of times internal between two intervals that are not observed by anyone
   if (keep_periods_observed_by == "none"){
   }
   
@@ -543,13 +522,27 @@ GenerateTDDataset <- function(datasets,
   
   for (thisvar in TD_variables_final){
     if (classesvarsunique[[thisvar]] == "numeric"){
-      dt_final[get(thisvar) < extremevalue[[thisvar]], (thisvar) := NA ]
+      dt_final[get(thisvar) < extreme_value[[thisvar]], (thisvar) := NA ]
     }else{
       dt_final[get(thisvar) == placeholder_value[[thisvar]], (thisvar) := NA ]
       dt_final[get(thisvar) == placeholder_value2[[thisvar]], (thisvar) := NA ]
     }
   }
-    
+
+  # TO DO: implement TD_variables_with_definite_value_until_unobserved
+
+  for (i in 1:2) { 
+    for (thisvar in TD_variables[[i]]) {
+      if (thisvar %in% TD_variables_with_definite_value_until_unobserved){
+      dt_final[get(paste0('observed_',i) )  == 1, (thisvar) := zoo::na.locf(get(thisvar), na.rm = FALSE), by = UoO_var_final]
+      # tokeep <- c(UoO_var_final,thisvar,paste0('observed_',i))
+      # View(dt_final[,..tokeep])
+      }
+    }
+  }
+  
+  # ...
+  
   # Cast logical TD_variables to integers and Dates to IDate
   for (thisvar in TD_variables_final) {
     var_class <- classesvarsunique[[thisvar]]
